@@ -89,23 +89,37 @@ class NuScenesDataset(DatasetTemplate):
         cur_times = sweep_info['time_lag'] * np.ones((1, points_sweep.shape[1]))
         return points_sweep.T, cur_times.T
 
+    # def get_lidar_with_sweeps(self, index, max_sweeps=1):
+    #     info = self.infos[index]
+    #     lidar_path = self.root_path / info['lidar_path']
+    #     points = np.fromfile(str(lidar_path), dtype=np.float32, count=-1).reshape([-1, 5])[:, :4]
+
+    #     sweep_points_list = [points]
+    #     sweep_times_list = [np.zeros((points.shape[0], 1))]
+
+    #     for k in np.random.choice(len(info['sweeps']), max_sweeps - 1, replace=False):
+    #         points_sweep, times_sweep = self.get_sweep(info['sweeps'][k])
+    #         sweep_points_list.append(points_sweep)
+    #         sweep_times_list.append(times_sweep)
+
+    #     points = np.concatenate(sweep_points_list, axis=0)
+    #     times = np.concatenate(sweep_times_list, axis=0).astype(points.dtype)
+
+    #     points = np.concatenate((points, times), axis=1)
+    #     return points
+
     def get_lidar_with_sweeps(self, index, max_sweeps=1):
+        def remove_ego_points(points, center_radius=2.5):
+            mask = ~((np.abs(points[:, 0]) < center_radius) & (np.abs(points[:, 1]) < center_radius))
+            return points[mask]
         info = self.infos[index]
         lidar_path = self.root_path / info['lidar_path']
-        points = np.fromfile(str(lidar_path), dtype=np.float32, count=-1).reshape([-1, 5])[:, :4]
-
-        sweep_points_list = [points]
-        sweep_times_list = [np.zeros((points.shape[0], 1))]
-
-        for k in np.random.choice(len(info['sweeps']), max_sweeps - 1, replace=False):
-            points_sweep, times_sweep = self.get_sweep(info['sweeps'][k])
-            sweep_points_list.append(points_sweep)
-            sweep_times_list.append(times_sweep)
-
-        points = np.concatenate(sweep_points_list, axis=0)
-        times = np.concatenate(sweep_times_list, axis=0).astype(points.dtype)
-
-        points = np.concatenate((points, times), axis=1)
+        # points = np.fromfile(str(lidar_path), dtype=np.float32, count=-1).reshape([-1, 5])[:, :4]
+        points = np.fromfile(str(lidar_path), dtype=np.float32)
+        points[3::5] = points[3::5]/255
+        # points[3::5] = 1
+        points = np.delete(points, np.arange(4, points.size, 5)).reshape(-1, 4)
+        points = remove_ego_points(points)
         return points
 
     def __len__(self):
@@ -357,7 +371,8 @@ if __name__ == '__main__':
 
     if args.func == 'create_nuscenes_infos':
         dataset_cfg = EasyDict(yaml.load(open(args.cfg_file)))
-        ROOT_DIR = (Path(__file__).resolve().parent / '../../../').resolve()
+        #ROOT_DIR = (Path(__file__).resolve().parent / '../../../').resolve()
+        ROOT_DIR = Path('/media/javier/HDD_linux')
         dataset_cfg.VERSION = args.version
         create_nuscenes_info(
             version=dataset_cfg.VERSION,
