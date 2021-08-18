@@ -28,6 +28,7 @@ def parse_config():
     parser.add_argument('--extra_tag', type=str, default='default', help='extra tag for this experiment')
     parser.add_argument('--ckpt', type=str, default=None, help='checkpoint to start from')
     parser.add_argument('--pretrained_model', type=str, default=None, help='pretrained_model')
+    parser.add_argument('--freeze_pretrained_model', type=str, default=None, help='freeze_pretrained_model')
     parser.add_argument('--launcher', choices=['none', 'pytorch', 'slurm'], default='none')
     parser.add_argument('--tcp_port', type=int, default=18888, help='tcp port for distrbuted training')
     parser.add_argument('--sync_bn', action='store_true', default=False, help='whether to use sync bn')
@@ -124,6 +125,31 @@ def main():
     last_epoch = -1
     if args.pretrained_model is not None:
         model.load_params_from_file(filename=args.pretrained_model, to_cpu=dist, logger=logger)
+
+    if args.freeze_pretrained_model is not None:
+        model.load_params_from_file(filename=args.freeze_pretrained_model, to_cpu=dist, logger=logger)
+        ct = 0
+        for child in model.children():
+            ct += 1
+            # print("--------------------------------")
+            # print(child)
+            # print("--------------------------------")
+            # if ct == 3:
+            #     ct_ = 0
+            #     for child_ in child.children():
+            #         ct += 1
+            #         # print("++++++++++++++++++++++++++++++++")
+            #         # prinnt(child_)
+            #         # prit("++++++++++++++++++++++++++++++++")
+            #         if ct < 4:
+            #             for param in child.parameters():
+            #                 param.requires_grad = False
+            # print("-----------------")
+            # print(child)
+            # print("-----------------")
+            if ct < 4:
+                for param in child.parameters():
+                    param.requires_grad = False
 
     if args.ckpt is not None:
         it, start_epoch = model.load_params_with_optimizer(args.ckpt, to_cpu=dist, optimizer=optimizer, logger=logger)

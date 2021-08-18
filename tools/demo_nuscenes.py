@@ -28,56 +28,58 @@ def add_method(cls):
         return func
     return decorator
 
-@add_method(NuScenesDataset)
-def get_lidar_with_sweeps(self, index, max_sweeps=1):
-    def remove_ego_points(points, center_radius=2.5):
-            mask = ~((np.abs(points[:, 0]) < center_radius) & (np.abs(points[:, 1]) < center_radius))
-            return points[mask]
-    info = self.infos[index]
-    lidar_path = self.root_path / info['lidar_path']
-    # points = np.fromfile(str(lidar_path), dtype=np.float32, count=-1).reshape([-1, 5])[:, :4]
-    points = np.fromfile(str(lidar_path), dtype=np.float32)
-    points[3::5] = points[3::5]/255
-    points = np.delete(points, np.arange(4, points.size, 5)).reshape(-1, 4)
-    points = remove_ego_points(points)
-    return points
+# @add_method(NuScenesDataset)
+# def get_sweep(self, sweep_info):
+#         def remove_ego_points(points, center_radius=1.0):
+#             mask = ~((np.abs(points[:, 0]) < center_radius) & (np.abs(points[:, 1]) < center_radius))
+#             return points[mask]
 
-@add_method(NuScenesDataset)
-def __getitem__(self, index):
-    if self._merge_all_iters_to_one_epoch:
-        index = index % len(self.infos)
+#         lidar_path = self.root_path / sweep_info['lidar_path']
+#         points_sweep = np.fromfile(str(lidar_path), dtype=np.float32, count=-1).reshape([-1, 5])[:, :4]
+#         points_sweep = remove_ego_points(points_sweep).T
+#         if sweep_info['transform_matrix'] is not None:
+#             num_points = points_sweep.shape[1]
+#             points_sweep[:3, :] = sweep_info['transform_matrix'].dot(
+#                 np.vstack((points_sweep[:3, :], np.ones(num_points))))[:3, :]
 
-    info = copy.deepcopy(self.infos[index])
-    points = self.get_lidar_with_sweeps(index, max_sweeps=1)
+#         cur_times = sweep_info['time_lag'] * np.ones((1, points_sweep.shape[1]))
+#         return points_sweep.T, cur_times.T
 
-    input_dict = {
-        'points': points,
-        'frame_id': Path(info['lidar_path']).stem,
-        'metadata': {'token': info['token']}
-    }
+# @add_method(NuScenesDataset)
+# def get_lidar_with_sweeps(self, index, max_sweeps=1):
+#     info = self.infos[index]
+#     lidar_path = self.root_path / info['lidar_path']
+#     points = np.fromfile(str(lidar_path), dtype=np.float32)
+    
+#     points[3::5] = points[3::5]/255
+#     points = np.delete(points, np.arange(4, points.size, 5)).reshape(-1, 4)
 
-    if 'gt_boxes' in info:
-        if self.dataset_cfg.get('FILTER_MIN_POINTS_IN_GT', False):
-            mask = (info['num_lidar_pts'] > self.dataset_cfg.FILTER_MIN_POINTS_IN_GT - 1)
-        else:
-            mask = None
+#     sweep_points_list = [points]
 
-        input_dict.update({
-            'gt_names': info['gt_names'] if mask is None else info['gt_names'][mask],
-            'gt_boxes': info['gt_boxes'] if mask is None else info['gt_boxes'][mask]
-        })
+#     for k in np.random.choice(len(info['sweeps']), max_sweeps - 1, replace=False):
+#         points_sweep, _ = self.get_sweep(info['sweeps'][k])
+#         points_sweep[3::4] = points_sweep[3::4]/255
+#         sweep_points_list.append(points_sweep)
 
-    data_dict = self.prepare_data(data_dict=input_dict)
+#     points = np.concatenate(sweep_points_list, axis=0)
+#     print(points)
+    
+#     return points
 
-    if self.dataset_cfg.get('SET_NAN_VELOCITY_TO_ZEROS', False):
-        gt_boxes = data_dict['gt_boxes']
-        gt_boxes[np.isnan(gt_boxes)] = 0
-        data_dict['gt_boxes'] = gt_boxes
-
-    if not self.dataset_cfg.PRED_VELOCITY and 'gt_boxes' in data_dict:
-        data_dict['gt_boxes'] = data_dict['gt_boxes'][:, [0, 1, 2, 3, 4, 5, 6, -1]]
-
-    return data_dict
+# @add_method(NuScenesDataset)
+# def get_lidar_with_sweeps(self, index, max_sweeps=1):
+#     print(index)
+#     def remove_ego_points(points, center_radius=2.5):
+#             mask = ~((np.abs(points[:, 0]) < center_radius) & (np.abs(points[:, 1]) < center_radius))
+#             return points[mask]
+#     info = self.infos[index]
+#     lidar_path = self.root_path / info['lidar_path']
+#     # points = np.fromfile(str(lidar_path), dtype=np.float32, count=-1).reshape([-1, 5])[:, :4]
+#     points = np.fromfile(str(lidar_path), dtype=np.float32)
+#     points[3::5] = points[3::5]/255
+#     points = np.delete(points, np.arange(4, points.size, 5)).reshape(-1, 4)
+#     points = remove_ego_points(points)
+#     return points
 
 def parse_config():
     parser = argparse.ArgumentParser(description='arg parser')
@@ -94,7 +96,6 @@ def parse_config():
     cfg_from_yaml_file(args.cfg_file, cfg)
 
     return args, cfg
-
 
 def main():
 
@@ -115,8 +116,13 @@ def main():
     start = time.time()
     with torch.no_grad():
         data_dict = demo_dataset[args.idx]
+        print(type(data_dict))
+        print(data_dict)
+        
         logger.info(f'Visualized sample index: \t{args.idx}')
         data_dict = demo_dataset.collate_batch([data_dict])
+        # print(type(data_dict))
+        # print(data_dict)
         load_data_to_gpu(data_dict)
         pred_dicts, _ = model.forward(data_dict)
         # for bb in pred_dicts[0]['pred_boxes']:
@@ -140,23 +146,23 @@ def main():
         # pred_dicts[0]['pred_boxes'][:,7] = 0
         # pred_dicts[0]['pred_boxes'][:,8] = 0
 
-        # mask = (pred_dicts[0]['pred_scores']>0.5).float()
-        # indices = torch.nonzero(mask)
-        # V.draw_scenes(
-        #     points=data_dict['points'][:, 1:],
-        #     ref_boxes=pred_dicts[0]['pred_boxes'][indices].reshape(-1, 9),
-        #     ref_scores=pred_dicts[0]['pred_scores'][indices].reshape(-1), ref_labels=pred_dicts[0]['pred_labels'][indices].reshape(-1)
-        # )
-
-        mask = (pred_dicts[0]['pred_scores']>0.5).float()
+        mask = (pred_dicts[0]['pred_scores']>0.3).float()
         indices = torch.nonzero(mask)
         V.draw_scenes(
-            points=data_dict['points'][:, 1:], ref_boxes=pred_dicts[0]['pred_boxes'][indices].reshape(-1, 7),
+            points=data_dict['points'][:, 1:],
+            ref_boxes=pred_dicts[0]['pred_boxes'][indices].reshape(-1, 9),
             ref_scores=pred_dicts[0]['pred_scores'][indices].reshape(-1), ref_labels=pred_dicts[0]['pred_labels'][indices].reshape(-1)
         )
 
+        # mask = (pred_dicts[0]['pred_scores']>0.5).float()
+        # indices = torch.nonzero(mask)
+        # V.draw_scenes(
+        #     points=data_dict['points'][:, 1:], ref_boxes=pred_dicts[0]['pred_boxes'][indices].reshape(-1, 7),
+        #     ref_scores=pred_dicts[0]['pred_scores'][indices].reshape(-1), ref_labels=pred_dicts[0]['pred_labels'][indices].reshape(-1)
+        # )
 
-        print(pred_dicts[0]['pred_boxes'][indices])
+
+        # print(pred_dicts[0]['pred_boxes'][indices])
 
         # V.draw_scenes(
         #     points=data_dict['points'][:, 1:], ref_boxes=pred_dicts[0]['pred_boxes'],
